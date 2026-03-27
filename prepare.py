@@ -54,6 +54,7 @@ BOS_TOKEN = "<|reserved_0|>"
 # Data download
 # ---------------------------------------------------------------------------
 
+# 지정한 parquet 샤드 하나를 재시도 로직과 함께 다운로드한다.
 def download_single_shard(index):
     """Download one parquet shard with retries. Returns True on success."""
     filename = f"shard_{index:05d}.parquet"
@@ -88,6 +89,7 @@ def download_single_shard(index):
     return False
 
 
+# 학습 샤드와 고정 검증 샤드를 병렬로 내려받는다.
 def download_data(num_shards, download_workers=8):
     """Download training shards + pinned validation shard."""
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -116,12 +118,14 @@ def download_data(num_shards, download_workers=8):
 # Tokenizer training
 # ---------------------------------------------------------------------------
 
+# 데이터 디렉터리의 parquet 파일 경로를 정렬해서 반환한다.
 def list_parquet_files():
     """Return sorted list of parquet file paths in the data directory."""
     files = sorted(f for f in os.listdir(DATA_DIR) if f.endswith(".parquet") and not f.endswith(".tmp"))
     return [os.path.join(DATA_DIR, f) for f in files]
 
 
+# 검증 샤드를 제외한 문서를 토크나이저 학습용 텍스트 스트림으로 순회한다.
 def text_iterator(max_chars=1_000_000_000, doc_cap=10_000):
     """Yield documents from training split (all shards except pinned val shard)."""
     parquet_paths = [p for p in list_parquet_files() if not p.endswith(VAL_FILENAME)]
@@ -138,6 +142,7 @@ def text_iterator(max_chars=1_000_000_000, doc_cap=10_000):
                     return
 
 
+# BPE 토크나이저를 학습하고 평가용 token-bytes 룩업까지 함께 저장한다.
 def train_tokenizer():
     """Train BPE tokenizer using rustbpe, save as tiktoken pickle."""
     tokenizer_pkl = os.path.join(TOKENIZER_DIR, "tokenizer.pkl")
@@ -206,25 +211,31 @@ def train_tokenizer():
 # Runtime utilities (imported by train.py)
 # ---------------------------------------------------------------------------
 
+# 학습 단계에서 사용하는 최소한의 토크나이저 래퍼를 제공한다.
 class Tokenizer:
     """Minimal tokenizer wrapper. Training is handled above."""
 
+    # 인코더와 BOS 토큰 ID를 초기화한다.
     def __init__(self, enc):
         self.enc = enc
         self.bos_token_id = enc.encode_single_token(BOS_TOKEN)
 
+    # 저장된 토크나이저 디렉터리에서 인코더를 복원한다.
     @classmethod
     def from_directory(cls, tokenizer_dir=TOKENIZER_DIR):
         with open(os.path.join(tokenizer_dir, "tokenizer.pkl"), "rb") as f:
             enc = pickle.load(f)
         return cls(enc)
 
+    # 현재 토크나이저의 전체 어휘 크기를 반환한다.
     def get_vocab_size(self):
         return self.enc.n_vocab
 
+    # BOS 토큰 ID를 반환한다.
     def get_bos_token_id(self):
         return self.bos_token_id
 
+    # 문자열 또는 문자열 배치를 토큰 ID 시퀀스로 변환한다.
     def encode(self, text, prepend=None, num_threads=8):
         if prepend is not None:
             prepend_id = prepend if isinstance(prepend, int) else self.enc.encode_single_token(prepend)
@@ -241,16 +252,19 @@ class Tokenizer:
             raise ValueError(f"Invalid input type: {type(text)}")
         return ids
 
+    # 토큰 ID 시퀀스를 다시 문자열로 복원한다.
     def decode(self, ids):
         return self.enc.decode(ids)
 
 
+# 평가에 필요한 토큰별 바이트 수 텐서를 지정한 디바이스로 불러온다.
 def get_token_bytes(device="cpu"):
     path = os.path.join(TOKENIZER_DIR, "token_bytes.pt")
     with open(path, "rb") as f:
         return torch.load(f, map_location=device)
 
 
+# split에 맞는 문서 묶음을 parquet에서 끊임없이 읽어온다.
 def _document_batches(split, tokenizer_batch_size=128):
     """Infinite iterator over document batches from parquet files."""
     parquet_paths = list_parquet_files()
@@ -273,6 +287,7 @@ def _document_batches(split, tokenizer_batch_size=128):
         epoch += 1
 
 
+# 문서 버퍼를 best-fit으로 채워 BOS 정렬 학습/검증 배치를 만든다.
 def make_dataloader(tokenizer, B, T, split, buffer_size=1000):
     """
     BOS-aligned dataloader with best-fit packing.
@@ -287,6 +302,7 @@ def make_dataloader(tokenizer, B, T, split, buffer_size=1000):
     doc_buffer = []
     epoch = 1
 
+    # 문서 버퍼가 부족할 때 다음 텍스트 묶음을 토큰화해 채운다.
     def refill_buffer():
         nonlocal epoch
         doc_batch, epoch = next(batches)
@@ -339,7 +355,7 @@ def make_dataloader(tokenizer, B, T, split, buffer_size=1000):
 # ---------------------------------------------------------------------------
 # Evaluation (DO NOT CHANGE — this is the fixed metric)
 # ---------------------------------------------------------------------------
-
+# 고정된 BPB 계산 절차로 검증 손실을 바이트 기준 지표로 환산한다.
 @torch.no_grad()
 def evaluate_bpb(model, tokenizer, batch_size):
     """

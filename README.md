@@ -2,91 +2,91 @@
 
 ![teaser](progress.png)
 
-*One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
+*한때 최전선 AI 연구는 고기 컴퓨터들이 먹고, 자고, 놀고, 가끔은 "그룹 미팅"이라는 의식 속에서 음파 인터커넥트로 동기화해 가며 수행하곤 했다. 그 시대는 이제 오래전에 끝났다. 이제 연구는 하늘 위의 거대한 컴퓨트 클러스터 구조물 전반에서 돌아가는 자율 AI 에이전트 군집의 영역이 되었다. 에이전트들은 우리가 이제 코드베이스의 10,205세대째에 와 있다고 주장하지만, 이제 그 "코드"는 인간의 이해를 넘어설 정도로 자기 수정하는 바이너리로 자라났기 때문에 그 말이 맞는지 틀린지 아무도 알 수 없다. 이 저장소는 그 모든 것이 어떻게 시작되었는지에 대한 이야기다. - @karpathy, 2026년 3월*.
 
-The idea: give an AI agent a small but real LLM training setup and let it experiment autonomously overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up in the morning to a log of experiments and (hopefully) a better model. The training code here is a simplified single-GPU implementation of [nanochat](https://github.com/karpathy/nanochat). The core idea is that you're not touching any of the Python files like you normally would as a researcher. Instead, you are programming the `program.md` Markdown files that provide context to the AI agents and set up your autonomous research org. The default `program.md` in this repo is intentionally kept as a bare bones baseline, though it's obvious how one would iterate on it over time to find the "research org code" that achieves the fastest research progress, how you'd add more agents to the mix, etc. A bit more context on this project is here in this [tweet](https://x.com/karpathy/status/2029701092347630069) and [this tweet](https://x.com/karpathy/status/2031135152349524125).
+아이디어는 이렇습니다. 작지만 실제로 돌아가는 LLM 학습 환경을 AI 에이전트에게 주고, 밤새 자율적으로 실험하게 합니다. 에이전트는 코드를 수정하고, 5분 동안 학습을 돌리고, 결과가 좋아졌는지 확인한 뒤, 유지하거나 폐기하고, 다시 반복합니다. 아침에 일어나면 실험 로그와, 잘 되었다면 더 나아진 모델이 남아 있습니다. 여기의 학습 코드는 [nanochat](https://github.com/karpathy/nanochat)을 단일 GPU용으로 단순화한 구현입니다. 핵심은 연구자처럼 직접 Python 파일을 만지는 대신, AI 에이전트에게 맥락을 제공하고 자율 연구 조직을 설정하는 `program.md` 마크다운 파일을 프로그래밍한다는 점입니다. 이 저장소의 기본 `program.md`는 의도적으로 아주 최소한의 베이스라인만 담고 있지만, 시간이 지나며 "연구 조직 코드"를 어떻게 다듬어 더 빠른 연구 진전을 끌어낼 수 있을지, 여기에 에이전트를 어떻게 더 추가할 수 있을지 등은 충분히 상상할 수 있습니다. 이 프로젝트에 대한 추가 맥락은 [이 트윗](https://x.com/karpathy/status/2029701092347630069)과 [이 트윗](https://x.com/karpathy/status/2031135152349524125)에서 볼 수 있습니다.
 
-## How it works
+## 동작 방식
 
-The repo is deliberately kept small and only really has three files that matter:
+이 저장소는 의도적으로 작게 유지되며, 실제로 중요한 파일은 세 개뿐입니다.
 
-- **`prepare.py`** — fixed constants, one-time data prep (downloads training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified.
-- **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc. **This file is edited and iterated on by the agent**.
-- **`program.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
+- **`prepare.py`** — 고정 상수, 1회성 데이터 준비 작업(학습 데이터 다운로드, BPE 토크나이저 학습), 런타임 유틸리티(데이터로더, 평가)를 담고 있습니다. 수정하지 않습니다.
+- **`train.py`** — 에이전트가 수정하는 유일한 파일입니다. 전체 GPT 모델, 옵티마이저(Muon + AdamW), 학습 루프가 들어 있습니다. 아키텍처, 하이퍼파라미터, 옵티마이저, 배치 크기 등 모든 것이 실험 대상입니다. **이 파일은 에이전트가 수정하고 반복 개선합니다.**
+- **`program.md`** — 하나의 에이전트를 위한 기본 지침입니다. 에이전트를 이 파일에 연결하고 실행하면 됩니다. **이 파일은 사람이 수정하고 반복 개선합니다.**
 
-By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared.
+설계상 학습은 여러분의 컴퓨팅 환경 세부 사항과 무관하게 **고정된 5분 시간 예산**(시작/컴파일 시간 제외, 실제 벽시계 기준)으로 실행됩니다. 평가지표는 **`val_bpb`**(검증 bits per byte)이며, 낮을수록 좋고 어휘 크기에 독립적이어서 아키텍처 변경도 공정하게 비교할 수 있습니다.
 
-If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) looks pretty good for a lot more context.
+신경망이 익숙하지 않다면, 더 많은 배경 설명을 위해 이 ["더미를 위한 가이드"](https://x.com/hooeem/status/2030720614752039185)를 참고해 보세요.
 
-## Quick start
+## 빠른 시작
 
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+**요구 사항:** NVIDIA GPU 1개(H100에서 테스트), Python 3.10+, [uv](https://docs.astral.sh/uv/)
 
 ```bash
 
-# 1. Install uv project manager (if you don't already have it)
+# 1. uv 프로젝트 매니저 설치 (이미 없다면)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Install dependencies
+# 2. 의존성 설치
 uv sync
 
-# 3. Download data and train tokenizer (one-time, ~2 min)
+# 3. 데이터 다운로드 및 토크나이저 학습 (1회성, 약 2분)
 uv run prepare.py
 
-# 4. Manually run a single training experiment (~5 min)
+# 4. 단일 학습 실험을 수동으로 실행 (약 5분)
 uv run train.py
 ```
 
-If the above commands all work ok, your setup is working and you can go into autonomous research mode.
+위 명령들이 모두 잘 동작하면 설정이 완료된 것이고, 이제 자율 연구 모드로 들어갈 수 있습니다.
 
-## Running the agent
+## 에이전트 실행하기
 
-Simply spin up your Claude/Codex or whatever you want in this repo (and disable all permissions), then you can prompt something like:
-
-```
-Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
-```
-
-The `program.md` file is essentially a super lightweight "skill".
-
-## Project structure
+이 저장소에서 Claude, Codex, 혹은 원하는 에이전트를 실행하고(권한은 모두 비활성화한 상태), 아래와 같이 프롬프트를 주면 됩니다.
 
 ```
-prepare.py      — constants, data prep + runtime utilities (do not modify)
-train.py        — model, optimizer, training loop (agent modifies this)
-program.md      — agent instructions
-pyproject.toml  — dependencies
+안녕, program.md를 한번 보고 새로운 실험을 시작해 보자! 먼저 설정부터 하자.
 ```
 
-## Design choices
+`program.md` 파일은 사실상 아주 가벼운 "스킬" 역할을 합니다.
 
-- **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
-- **Fixed time budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. This means you can expect approx 12 experiments/hour and approx 100 experiments while you sleep. There are two upsides of this design decision. First, this makes experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc). Second, this means that autoresearch will find the most optimal model for your platform in that time budget. The downside is that your runs (and results) become not comparable to other people running on other compute platforms.
-- **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs. One GPU, one file, one metric.
+## 프로젝트 구조
 
-## Platform support
+```
+prepare.py      — 상수, 데이터 준비 + 런타임 유틸리티 (수정 금지)
+train.py        — 모델, 옵티마이저, 학습 루프 (에이전트가 수정)
+program.md      — 에이전트 지침
+pyproject.toml  — 의존성
+```
 
-This code currently requires that you have a single NVIDIA GPU. In principle it is quite possible to support CPU, MPS and other platforms but this would also bloat the code. I'm not 100% sure that I want to take this on personally right now. People can reference (or have their agents reference) the full/parent nanochat repository that has wider platform support and shows the various solutions (e.g. a Flash Attention 3 kernels fallback implementation, generic device support, autodetection, etc.), feel free to create forks or discussions for other platforms and I'm happy to link to them here in the README in some new notable forks section or etc.
+## 설계 선택
 
-Seeing as there seems to be a lot of interest in tinkering with autoresearch on much smaller compute platforms than an H100, a few extra words. If you're going to try running autoresearch on smaller computers (Macbooks etc.), I'd recommend one of the forks below. On top of this, here are some recommendations for how to tune the defaults for much smaller models for aspiring forks:
+- **수정 대상은 단일 파일.** 에이전트는 `train.py`만 수정합니다. 이렇게 하면 범위를 관리하기 쉽고 diff도 검토하기 쉬워집니다.
+- **고정된 시간 예산.** 학습은 플랫폼과 관계없이 항상 정확히 5분 동안 실행됩니다. 즉 시간당 약 12번의 실험, 잠자는 동안 약 100번의 실험을 기대할 수 있습니다. 이 설계에는 두 가지 장점이 있습니다. 첫째, 에이전트가 무엇을 바꾸든(모델 크기, 배치 크기, 아키텍처 등) 실험을 직접 비교할 수 있습니다. 둘째, 이 시간 예산 안에서 여러분의 플랫폼에 가장 최적인 모델을 autoresearch가 찾게 됩니다. 단점은, 다른 하드웨어 플랫폼에서 돌린 사람들과는 실행 결과를 직접 비교하기 어려워진다는 점입니다.
+- **자급자족형 구성.** PyTorch와 몇 개의 작은 패키지 외에는 외부 의존성이 없습니다. 분산 학습도, 복잡한 설정도 없습니다. GPU 하나, 파일 하나, 지표 하나입니다.
 
-1. To get half-decent results I'd use a dataset with a lot less entropy, e.g. this [TinyStories dataset](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean). These are GPT-4 generated short stories. Because the data is a lot narrower in scope, you will see reasonable results with a lot smaller models (if you try to sample from them after training).
-2. You might experiment with decreasing `vocab_size`, e.g. from 8192 down to 4096, 2048, 1024, or even - simply byte-level tokenizer with 256 possibly bytes after utf-8 encoding.
-3. In `prepare.py`, you'll want to lower `MAX_SEQ_LEN` a lot, depending on the computer even down to 256 etc. As you lower `MAX_SEQ_LEN`, you may want to experiment with increasing `DEVICE_BATCH_SIZE` in `train.py` slightly to compensate. The number of tokens per fwd/bwd pass is the product of these two.
-4. Also in `prepare.py`, you'll want to decrease `EVAL_TOKENS` so that your validation loss is evaluated on a lot less data.
-5. In `train.py`, the primary single knob that controls model complexity is the `DEPTH` (default 8, here). A lot of variables are just functions of this, so e.g. lower it down to e.g. 4.
-6. You'll want to most likely use `WINDOW_PATTERN` of just "L", because "SSSL" uses alternating banded attention pattern that may be very inefficient for you. Try it.
-7. You'll want to lower `TOTAL_BATCH_SIZE` a lot, but keep it powers of 2, e.g. down to `2**14` (~16K) or so even, hard to tell.
+## 플랫폼 지원
 
-I think these would be the reasonable hyperparameters to play with. Ask your favorite coding agent for help and copy paste them this guide, as well as the full source code.
+현재 이 코드는 NVIDIA GPU 1개가 있어야 합니다. 원칙적으로는 CPU, MPS, 기타 플랫폼도 충분히 지원할 수 있지만, 그러면 코드가 많이 비대해집니다. 지금 당장 제가 개인적으로 그 작업까지 맡고 싶은지는 확신이 없습니다. 더 폭넓은 플랫폼 지원과 각종 해결책(예: Flash Attention 3 커널 폴백 구현, 일반적인 디바이스 지원, 자동 감지 등)을 담고 있는 상위 저장소인 nanochat를 참고하거나, 다른 플랫폼용 포크나 토론을 자유롭게 만들어 주세요. 그런 자료가 생기면 README의 별도 주목할 만한 포크 섹션 등에 기꺼이 링크하겠습니다.
 
-## Notable forks
+H100보다 훨씬 작은 컴퓨팅 환경에서 autoresearch를 만져보고 싶어 하는 분들이 꽤 많은 듯해서 몇 마디를 덧붙입니다. 더 작은 컴퓨터(Macbook 등)에서 autoresearch를 실행해 보려면, 아래 포크들 중 하나를 추천합니다. 추가로, 훨씬 작은 모델에 맞게 기본값을 조정할 때 참고할 만한 제안은 다음과 같습니다.
+
+1. 반쯤 괜찮은 결과라도 얻고 싶다면 엔트로피가 훨씬 낮은 데이터셋을 쓰는 것이 좋습니다. 예를 들어 이 [TinyStories 데이터셋](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean)처럼요. GPT-4가 생성한 짧은 이야기들인데, 데이터 범위가 훨씬 좁기 때문에 훨씬 작은 모델로도 학습 후 샘플링했을 때 제법 괜찮은 결과를 볼 수 있습니다.
+2. `vocab_size`를 낮춰보는 것도 좋습니다. 예를 들어 8192에서 4096, 2048, 1024로 낮추거나, 더 나아가 UTF-8 인코딩 이후 256 바이트만 쓰는 바이트 단위 토크나이저를 써볼 수 있습니다.
+3. `prepare.py`에서는 `MAX_SEQ_LEN`을 컴퓨터 성능에 맞게 크게 낮추는 것이 좋습니다. 경우에 따라 256 정도까지 낮출 수도 있습니다. `MAX_SEQ_LEN`을 낮춘다면, 보상 차원에서 `train.py`의 `DEVICE_BATCH_SIZE`를 약간 늘려보는 실험도 해볼 수 있습니다. 한 번의 순전파/역전파에서 처리하는 토큰 수는 이 둘의 곱입니다.
+4. 역시 `prepare.py`에서 `EVAL_TOKENS`를 줄여 검증 손실을 훨씬 적은 데이터로 평가하도록 만드는 것이 좋습니다.
+5. `train.py`에서 모델 복잡도를 조절하는 가장 핵심적인 단일 노브는 `DEPTH`(기본값은 여기서 8)입니다. 많은 변수들이 여기에 종속되므로, 예를 들어 4 정도로 낮춰볼 수 있습니다.
+6. `WINDOW_PATTERN`은 `"L"`만 쓰는 쪽이 더 나을 가능성이 큽니다. `"SSSL"`은 교차하는 대역형 어텐션 패턴을 쓰는데, 환경에 따라 매우 비효율적일 수 있습니다. 직접 시도해 보세요.
+7. `TOTAL_BATCH_SIZE`도 많이 줄이는 것이 좋지만, 2의 거듭제곱은 유지하세요. 예를 들어 `2**14`(약 16K) 정도까지 내려갈 수 있습니다. 정확한 적정치는 환경마다 다릅니다.
+
+대체로 만져볼 만한 하이퍼파라미터는 이 정도라고 생각합니다. 좋아하는 코딩 에이전트에게 이 가이드와 전체 소스 코드를 함께 복사해 주고 도움을 받아 보세요.
+
+## 주목할 만한 포크
 
 - [miolini/autoresearch-macos](https://github.com/miolini/autoresearch-macos) (MacOS)
 - [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) (MacOS)
 - [jsegov/autoresearch-win-rtx](https://github.com/jsegov/autoresearch-win-rtx) (Windows)
 - [andyluo7/autoresearch](https://github.com/andyluo7/autoresearch) (AMD)
 
-## License
+## 라이선스
 
 MIT

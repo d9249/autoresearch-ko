@@ -29,6 +29,7 @@ from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evalua
 # GPT Model
 # ---------------------------------------------------------------------------
 
+# GPT 모델의 기본 구조 하이퍼파라미터를 묶어 둔다.
 @dataclass
 class GPTConfig:
     sequence_len: int = 2048
@@ -40,15 +41,18 @@ class GPTConfig:
     window_pattern: str = "SSSL"
 
 
+# 마지막 차원 기준으로 RMSNorm을 적용한다.
 def norm(x):
     return F.rms_norm(x, (x.size(-1),))
 
 
+# 현재 레이어에 value embedding 경로를 둘지 결정한다.
 def has_ve(layer_idx, n_layer):
     """Returns True if layer should have Value Embedding (alternating, last always included)."""
     return layer_idx % 2 == (n_layer - 1) % 2
 
 
+# 쿼리/키 텐서에 rotary positional embedding을 적용한다.
 def apply_rotary_emb(x, cos, sin):
     assert x.ndim == 4
     d = x.shape[3] // 2
@@ -58,7 +62,9 @@ def apply_rotary_emb(x, cos, sin):
     return torch.cat([y1, y2], 3)
 
 
+# 인과적 self-attention과 선택적 value embedding 혼합을 수행한다.
 class CausalSelfAttention(nn.Module):
+    # 어텐션 프로젝션과 value embedding 게이트를 초기화한다.
     def __init__(self, config, layer_idx):
         super().__init__()
         self.n_head = config.n_head
@@ -74,6 +80,7 @@ class CausalSelfAttention(nn.Module):
         self.ve_gate_channels = 32
         self.ve_gate = nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
 
+    # 현재 토큰 표현에서 causal attention 출력을 계산한다.
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
@@ -96,12 +103,15 @@ class CausalSelfAttention(nn.Module):
         return y
 
 
+# ReLU 제곱 기반의 간단한 MLP 블록을 정의한다.
 class MLP(nn.Module):
+    # MLP의 두 선형 변환 층을 초기화한다.
     def __init__(self, config):
         super().__init__()
         self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=False)
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=False)
 
+    # 비선형 변환 뒤 다시 모델 차원으로 투영한다.
     def forward(self, x):
         x = self.c_fc(x)
         x = F.relu(x).square()
@@ -109,19 +119,24 @@ class MLP(nn.Module):
         return x
 
 
+# 어텐션과 MLP를 잔차 연결로 묶은 Transformer 블록이다.
 class Block(nn.Module):
+    # 블록 내부의 어텐션과 MLP 모듈을 구성한다.
     def __init__(self, config, layer_idx):
         super().__init__()
         self.attn = CausalSelfAttention(config, layer_idx)
         self.mlp = MLP(config)
 
+    # 정규화된 입력에 어텐션과 MLP 잔차 갱신을 순서대로 적용한다.
     def forward(self, x, ve, cos_sin, window_size):
         x = x + self.attn(norm(x), ve, cos_sin, window_size)
         x = x + self.mlp(norm(x))
         return x
 
 
+# 임베딩, 블록 스택, 출력 헤드를 포함한 전체 GPT 본체를 정의한다.
 class GPT(nn.Module):
+    # 모델 구조와 rotary/value embedding 보조 상태를 초기화한다.
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -146,6 +161,7 @@ class GPT(nn.Module):
         self.register_buffer("cos", cos, persistent=False)
         self.register_buffer("sin", sin, persistent=False)
 
+    # 각 모듈의 파라미터를 학습 시작에 맞게 초기화한다.
     @torch.no_grad()
     def init_weights(self):
         # Embedding and unembedding
@@ -180,6 +196,7 @@ class GPT(nn.Module):
         for ve in self.value_embeds.values():
             ve.to(dtype=torch.bfloat16)
 
+    # 주어진 길이에 맞는 rotary embedding의 cos/sin 테이블을 미리 만든다.
     def _precompute_rotary_embeddings(self, seq_len, head_dim, base=10000, device=None):
         if device is None:
             device = self.transformer.wte.weight.device
@@ -192,6 +209,7 @@ class GPT(nn.Module):
         cos, sin = cos[None, :, None, :], sin[None, :, None, :]
         return cos, sin
 
+    # 레이어별 sliding/full attention window 크기를 패턴 문자열로부터 계산한다.
     def _compute_window_sizes(self, config):
         pattern = config.window_pattern.upper()
         assert all(c in "SL" for c in pattern)
@@ -205,6 +223,7 @@ class GPT(nn.Module):
         window_sizes[-1] = (long_window, 0)
         return window_sizes
 
+    # 토큰당 대략적인 forward/backward FLOPs를 추정한다.
     def estimate_flops(self):
         """Estimated FLOPs per token (forward + backward)."""
         nparams = sum(p.numel() for p in self.parameters())
@@ -221,6 +240,7 @@ class GPT(nn.Module):
             attn_flops += 12 * h * q * effective_seq
         return 6 * (nparams - nparams_exclude) + attn_flops
 
+    # 파라미터를 스케일링 대상별로 나눠 개수를 집계한다.
     def num_scaling_params(self):
         wte = sum(p.numel() for p in self.transformer.wte.parameters())
         value_embeds = sum(p.numel() for p in self.value_embeds.parameters())
@@ -233,6 +253,7 @@ class GPT(nn.Module):
             'transformer_matrices': transformer_matrices, 'scalars': scalars, 'total': total,
         }
 
+    # 파라미터 종류별로 Muon/AdamW 그룹을 구성해 옵티마이저를 만든다.
     def setup_optimizer(self, unembedding_lr=0.004, embedding_lr=0.2, matrix_lr=0.02,
                         weight_decay=0.0, adam_betas=(0.8, 0.95), scalar_lr=0.5):
         model_dim = self.config.n_embd
@@ -265,6 +286,7 @@ class GPT(nn.Module):
             group["initial_lr"] = group["lr"]
         return optimizer
 
+    # 입력 토큰에서 logits 또는 학습용 cross-entropy loss를 계산한다.
     def forward(self, idx, targets=None, reduction='mean'):
         B, T = idx.size()
         assert T <= self.cos.size(1)
@@ -302,6 +324,7 @@ polar_express_coeffs = [
     (2.3465413258596377, -1.7097828382687081, 0.42323551169305323),
 ]
 
+# 단일 파라미터 텐서에 AdamW 업데이트를 fused 형태로 적용한다.
 @torch.compile(dynamic=False, fullgraph=True)
 def adamw_step_fused(p, grad, exp_avg, exp_avg_sq, step_t, lr_t, beta1_t, beta2_t, eps_t, wd_t):
     p.mul_(1 - lr_t * wd_t)
@@ -313,6 +336,7 @@ def adamw_step_fused(p, grad, exp_avg, exp_avg_sq, step_t, lr_t, beta1_t, beta2_
     step_size = lr_t / bias1
     p.add_(exp_avg / denom, alpha=-step_size)
 
+# Muon 업데이트의 직교화와 분산 정규화를 fused 커널 형태로 수행한다.
 @torch.compile(dynamic=False, fullgraph=True)
 def muon_step_fused(stacked_grads, stacked_params, momentum_buffer, second_momentum_buffer,
                     momentum_t, lr_t, wd_t, beta2_t, ns_steps, red_dim):
@@ -353,9 +377,11 @@ def muon_step_fused(stacked_grads, stacked_params, momentum_buffer, second_momen
     stacked_params.sub_(lr * g + lr * wd * stacked_params * mask)
 
 
+# 2D 행렬에는 Muon, 그 외 파라미터에는 AdamW를 적용하는 혼합 옵티마이저다.
 class MuonAdamW(torch.optim.Optimizer):
     """Combined optimizer: Muon for 2D matrix params, AdamW for others."""
 
+    # 컴파일 재생성을 줄이기 위한 상태 텐서와 하이퍼파라미터 버퍼를 만든다.
     def __init__(self, param_groups):
         super().__init__(param_groups, defaults={})
         # 0-D CPU tensors to avoid torch.compile recompilation when values change
@@ -370,6 +396,7 @@ class MuonAdamW(torch.optim.Optimizer):
         self._muon_wd_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
         self._muon_beta2_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
 
+    # AdamW 파라미터 그룹 하나를 순회하며 상태를 갱신하고 업데이트한다.
     def _step_adamw(self, group):
         for p in group['params']:
             if p.grad is None:
@@ -391,6 +418,7 @@ class MuonAdamW(torch.optim.Optimizer):
                             self._adamw_step_t, self._adamw_lr_t, self._adamw_beta1_t,
                             self._adamw_beta2_t, self._adamw_eps_t, self._adamw_wd_t)
 
+    # 같은 shape의 행렬 파라미터 묶음을 Muon으로 한꺼번에 업데이트한다.
     def _step_muon(self, group):
         params = group['params']
         if not params:
@@ -417,6 +445,7 @@ class MuonAdamW(torch.optim.Optimizer):
                         self._muon_beta2_t, group["ns_steps"], red_dim)
         torch._foreach_copy_(params, list(stacked_params.unbind(0)))
 
+    # 등록된 모든 파라미터 그룹에 맞는 업데이트 함수를 실행한다.
     @torch.no_grad()
     def step(self):
         for group in self.param_groups:
@@ -466,6 +495,7 @@ tokenizer = Tokenizer.from_directory()
 vocab_size = tokenizer.get_vocab_size()
 print(f"Vocab size: {vocab_size:,}")
 
+# depth로부터 모델 차원과 헤드 수를 맞춘 GPT 설정을 만든다.
 def build_model_config(depth):
     base_dim = depth * ASPECT_RATIO
     model_dim = ((base_dim + HEAD_DIM - 1) // HEAD_DIM) * HEAD_DIM
@@ -515,6 +545,7 @@ print(f"Gradient accumulation steps: {grad_accum_steps}")
 
 # Schedules (all based on progress = training_time / TIME_BUDGET)
 
+# 현재 진행률에 맞는 학습률 배율을 계산한다.
 def get_lr_multiplier(progress):
     if progress < WARMUP_RATIO:
         return progress / WARMUP_RATIO if WARMUP_RATIO > 0 else 1.0
@@ -524,10 +555,12 @@ def get_lr_multiplier(progress):
         cooldown = (1.0 - progress) / WARMDOWN_RATIO
         return cooldown * 1.0 + (1 - cooldown) * FINAL_LR_FRAC
 
+# 초반에는 낮고 이후에는 높아지는 Muon 모멘텀 스케줄을 만든다.
 def get_muon_momentum(step):
     frac = min(step / 300, 1)
     return (1 - frac) * 0.85 + frac * 0.95
 
+# 학습이 진행될수록 줄어드는 weight decay 스케줄을 계산한다.
 def get_weight_decay(progress):
     return WEIGHT_DECAY * (1 - progress)
 

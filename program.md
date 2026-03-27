@@ -1,46 +1,46 @@
 # autoresearch
 
-This is an experiment to have the LLM do its own research.
+이것은 LLM이 스스로 연구를 수행하게 해보는 실험이다.
 
-## Setup
+## 설정
 
-To set up a new experiment, work with the user to:
+새 실험을 준비할 때는 사용자와 함께 다음을 진행한다.
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar5`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
-2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current master.
-3. **Read the in-scope files**: The repo is small. Read these files for full context:
-   - `README.md` — repository context.
-   - `prepare.py` — fixed constants, data prep, tokenizer, dataloader, evaluation. Do not modify.
-   - `train.py` — the file you modify. Model architecture, optimizer, training loop.
-4. **Verify data exists**: Check that `~/.cache/autoresearch/` contains data shards and a tokenizer. If not, tell the human to run `uv run prepare.py`.
-5. **Initialize results.tsv**: Create `results.tsv` with just the header row. The baseline will be recorded after the first run.
-6. **Confirm and go**: Confirm setup looks good.
+1. **실행 태그 합의하기**: 오늘 날짜를 기준으로 태그를 제안한다(예: `mar5`). `autoresearch/<tag>` 브랜치는 아직 존재하면 안 된다. 완전히 새로운 실행이어야 한다.
+2. **브랜치 만들기**: 현재 master에서 `git checkout -b autoresearch/<tag>`를 실행한다.
+3. **대상 파일 읽기**: 이 저장소는 작다. 전체 맥락을 얻기 위해 아래 파일들을 읽는다.
+   - `README.md` — 저장소 전반의 맥락
+   - `prepare.py` — 고정 상수, 데이터 준비, 토크나이저, 데이터로더, 평가. 수정 금지
+   - `train.py` — 네가 수정하는 파일. 모델 아키텍처, 옵티마이저, 학습 루프
+4. **데이터 존재 여부 확인**: `~/.cache/autoresearch/` 안에 데이터 샤드와 토크나이저가 있는지 확인한다. 없다면 사람에게 `uv run prepare.py`를 실행하라고 알려준다.
+5. **`results.tsv` 초기화**: 헤더 행만 들어 있는 `results.tsv`를 만든다. 베이스라인은 첫 실행 후 기록한다.
+6. **확인 후 시작**: 설정이 좋아 보이는지 확인한다.
 
-Once you get confirmation, kick off the experimentation.
+확인을 받으면 실험을 시작한다.
 
-## Experimentation
+## 실험
 
-Each experiment runs on a single GPU. The training script runs for a **fixed time budget of 5 minutes** (wall clock training time, excluding startup/compilation). You launch it simply as: `uv run train.py`.
+각 실험은 단일 GPU에서 실행된다. 학습 스크립트는 **고정된 5분 시간 예산**(시작/컴파일 제외, 실제 벽시계 학습 시간)으로 실행된다. 실행 명령은 단순하다: `uv run train.py`.
 
-**What you CAN do:**
-- Modify `train.py` — this is the only file you edit. Everything is fair game: model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.
+**할 수 있는 것:**
+- `train.py` 수정 — 네가 수정하는 유일한 파일이다. 모델 아키텍처, 옵티마이저, 하이퍼파라미터, 학습 루프, 배치 크기, 모델 크기 등 모든 것이 실험 대상이다.
 
-**What you CANNOT do:**
-- Modify `prepare.py`. It is read-only. It contains the fixed evaluation, data loading, tokenizer, and training constants (time budget, sequence length, etc).
-- Install new packages or add dependencies. You can only use what's already in `pyproject.toml`.
-- Modify the evaluation harness. The `evaluate_bpb` function in `prepare.py` is the ground truth metric.
+**할 수 없는 것:**
+- `prepare.py` 수정. 이 파일은 읽기 전용이다. 고정된 평가 방식, 데이터 로딩, 토크나이저, 학습 상수(시간 예산, 시퀀스 길이 등)가 들어 있다.
+- 새 패키지 설치 또는 의존성 추가. `pyproject.toml`에 이미 있는 것만 사용할 수 있다.
+- 평가 하네스 수정. `prepare.py`의 `evaluate_bpb` 함수가 기준 진실 지표다.
 
-**The goal is simple: get the lowest val_bpb.** Since the time budget is fixed, you don't need to worry about training time — it's always 5 minutes. Everything is fair game: change the architecture, the optimizer, the hyperparameters, the batch size, the model size. The only constraint is that the code runs without crashing and finishes within the time budget.
+**목표는 단순하다: 가장 낮은 `val_bpb`를 얻는 것.** 시간 예산은 고정이므로 학습 시간은 걱정할 필요가 없다. 항상 5분이다. 아키텍처, 옵티마이저, 하이퍼파라미터, 배치 크기, 모델 크기 등 무엇이든 바꿔도 된다. 유일한 제약은 코드가 크래시 없이 실행되고 시간 예산 안에 끝나야 한다는 점이다.
 
-**VRAM** is a soft constraint. Some increase is acceptable for meaningful val_bpb gains, but it should not blow up dramatically.
+**VRAM**은 완전한 하드 제약은 아니다. 의미 있는 `val_bpb` 향상이 있다면 어느 정도 증가하는 것은 괜찮지만, 폭발적으로 커지면 안 된다.
 
-**Simplicity criterion**: All else being equal, simpler is better. A small improvement that adds ugly complexity is not worth it. Conversely, removing something and getting equal or better results is a great outcome — that's a simplification win. When evaluating whether to keep a change, weigh the complexity cost against the improvement magnitude. A 0.001 val_bpb improvement that adds 20 lines of hacky code? Probably not worth it. A 0.001 val_bpb improvement from deleting code? Definitely keep. An improvement of ~0 but much simpler code? Keep.
+**단순성 기준**: 다른 조건이 같다면 단순할수록 좋다. 보기 흉한 복잡성을 추가해서 얻는 작은 개선은 가치가 없다. 반대로 무언가를 제거했는데 결과가 같거나 더 좋아졌다면 훌륭한 단순화 승리다. 변경을 유지할지 판단할 때는 복잡성 비용과 개선 폭을 함께 저울질하라. 지저분한 해킹 코드 20줄을 추가해서 `val_bpb`가 0.001 좋아졌다고? 아마 가치가 없을 것이다. 코드를 삭제했는데 0.001 좋아졌다고? 확실히 유지하라. 개선 폭이 거의 0이더라도 코드가 훨씬 단순해졌다면 유지하라.
 
-**The first run**: Your very first run should always be to establish the baseline, so you will run the training script as is.
+**첫 번째 실행**: 가장 첫 실행은 언제나 베이스라인 확립을 위한 것이어야 하므로, 학습 스크립트를 수정 없이 그대로 실행한다.
 
-## Output format
+## 출력 형식
 
-Once the script finishes it prints a summary like this:
+스크립트가 끝나면 다음과 같은 요약을 출력한다.
 
 ```
 ---
@@ -55,60 +55,60 @@ num_params_M:     50.3
 depth:            8
 ```
 
-Note that the script is configured to always stop after 5 minutes, so depending on the computing platform of this computer the numbers might look different. You can extract the key metric from the log file:
+스크립트는 항상 5분 후 종료되도록 설정되어 있으므로, 이 컴퓨터의 계산 플랫폼에 따라 숫자는 달라질 수 있다. 핵심 지표는 로그 파일에서 다음처럼 뽑아낼 수 있다.
 
 ```
 grep "^val_bpb:" run.log
 ```
 
-## Logging results
+## 결과 기록
 
-When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions).
+실험이 끝나면 `results.tsv`에 기록한다(tab 구분, 쉼표 구분 아님 — 설명 칼럼에서 쉼표가 깨질 수 있음).
 
-The TSV has a header row and 5 columns:
-
-```
-commit	val_bpb	memory_gb	status	description
-```
-
-1. git commit hash (short, 7 chars)
-2. val_bpb achieved (e.g. 1.234567) — use 0.000000 for crashes
-3. peak memory in GB, round to .1f (e.g. 12.3 — divide peak_vram_mb by 1024) — use 0.0 for crashes
-4. status: `keep`, `discard`, or `crash`
-5. short text description of what this experiment tried
-
-Example:
+TSV는 헤더 행과 5개 열로 구성된다.
 
 ```
 commit	val_bpb	memory_gb	status	description
-a1b2c3d	0.997900	44.0	keep	baseline
-b2c3d4e	0.993200	44.2	keep	increase LR to 0.04
-c3d4e5f	1.005000	44.0	discard	switch to GeLU activation
-d4e5f6g	0.000000	0.0	crash	double model width (OOM)
 ```
 
-## The experiment loop
+1. git 커밋 해시(짧은 형식, 7자)
+2. 달성한 `val_bpb`(예: `1.234567`) — 크래시일 때는 `0.000000`
+3. GB 단위 최대 메모리 사용량, 소수 첫째 자리로 반올림(예: `12.3` — `peak_vram_mb`를 1024로 나눔) — 크래시일 때는 `0.0`
+4. 상태: `keep`, `discard`, 또는 `crash`
+5. 이 실험이 시도한 내용을 짧게 설명한 텍스트
 
-The experiment runs on a dedicated branch (e.g. `autoresearch/mar5` or `autoresearch/mar5-gpu0`).
+예시:
 
-LOOP FOREVER:
+```
+commit	val_bpb	memory_gb	status	description
+a1b2c3d	0.997900	44.0	keep	베이스라인
+b2c3d4e	0.993200	44.2	keep	LR을 0.04로 증가
+c3d4e5f	1.005000	44.0	discard	활성화를 GeLU로 변경
+d4e5f6g	0.000000	0.0	crash	모델 너비를 두 배로 증가 (OOM)
+```
 
-1. Look at the git state: the current branch/commit we're on
-2. Tune `train.py` with an experimental idea by directly hacking the code.
+## 실험 루프
+
+실험은 전용 브랜치에서 진행된다(예: `autoresearch/mar5` 또는 `autoresearch/mar5-gpu0`).
+
+무한 반복:
+
+1. 현재 git 상태를 본다: 지금 어느 브랜치/커밋 위에 있는지 확인한다.
+2. 실험 아이디어를 바탕으로 `train.py`를 직접 수정한다.
 3. git commit
-4. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
-5. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
-6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
-7. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)
-8. If val_bpb improved (lower), you "advance" the branch, keeping the git commit
-9. If val_bpb is equal or worse, you git reset back to where you started
+4. 실험 실행: `uv run train.py > run.log 2>&1` (모든 출력을 리디렉션한다 — `tee`를 쓰거나 출력이 컨텍스트를 뒤덮게 두지 말 것)
+5. 결과 읽기: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
+6. grep 결과가 비어 있으면 실행이 크래시한 것이다. `tail -n 50 run.log`로 Python 스택 트레이스를 읽고 수정해 본다. 몇 번 시도해도 해결되지 않으면 포기한다.
+7. 결과를 tsv에 기록한다(주의: `results.tsv` 파일은 git에 커밋하지 말고 추적되지 않은 상태로 둔다)
+8. `val_bpb`가 개선되었다면(더 낮다면) 브랜치를 "전진"시키고, 해당 git commit을 유지한다.
+9. `val_bpb`가 같거나 더 나쁘면 시작 지점으로 git reset 해서 되돌린다.
 
-The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate. If you feel like you're getting stuck in some way, you can rewind but you should probably do this very very sparingly (if ever).
+아이디어는 네가 완전히 자율적인 연구자처럼 행동하는 것이다. 결과가 좋으면 유지하고, 아니면 폐기한다. 이렇게 브랜치를 전진시키며 반복해 나간다. 어떤 식으로든 막히는 느낌이 들면 되감기를 할 수는 있지만, 정말 아주 드물게만 그래야 한다.
 
-**Timeout**: Each experiment should take ~5 minutes total (+ a few seconds for startup and eval overhead). If a run exceeds 10 minutes, kill it and treat it as a failure (discard and revert).
+**타임아웃**: 각 실험은 총 약 5분(+ 시작과 평가 오버헤드 몇 초) 정도가 걸려야 한다. 10분을 넘기면 프로세스를 종료하고 실패로 간주한다(폐기하고 되돌린다).
 
-**Crashes**: If a run crashes (OOM, or a bug, or etc.), use your judgment: If it's something dumb and easy to fix (e.g. a typo, a missing import), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the tsv, and move on.
+**크래시**: 실행이 크래시하면(OOM, 버그 등) 판단해서 대응하라. 단순한 오타나 import 누락처럼 어리석고 쉽게 고칠 수 있는 문제라면 고쳐서 다시 실행한다. 반대로 아이디어 자체가 근본적으로 잘못되었다면 그냥 건너뛰고, tsv에는 상태를 `crash`로 기록한 뒤 다음으로 넘어간다.
 
-**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — read papers referenced in the code, re-read the in-scope files for new angles, try combining previous near-misses, try more radical architectural changes. The loop runs until the human interrupts you, period.
+**절대 멈추지 말 것**: 초기 설정 이후 실험 루프가 시작되면, 사람에게 계속할지 물어보려고 멈추지 마라. "계속할까요?" 또는 "여기서 멈추는 게 좋을까요?" 같은 질문을 하지 마라. 사람은 자고 있을 수도 있고, 컴퓨터를 떠났을 수도 있으며, 네가 *수동으로 중지될 때까지* 계속 일하길 기대한다. 너는 자율적이다. 아이디어가 떨어졌다면 더 깊이 생각하라. 코드에서 언급된 논문을 읽고, 대상 파일을 다시 읽으며 새로운 각도를 찾고, 이전의 아슬아슬한 시도들을 결합하고, 더 급진적인 아키텍처 변경도 시도하라. 루프는 사람이 끊을 때까지 계속된다.
 
-As an example use case, a user might leave you running while they sleep. If each experiment takes you ~5 minutes then you can run approx 12/hour, for a total of about 100 over the duration of the average human sleep. The user then wakes up to experimental results, all completed by you while they slept!
+예를 들어 사용자가 자는 동안 너를 켜 두는 상황을 생각해 볼 수 있다. 실험 하나가 약 5분 걸린다면 시간당 약 12번, 평균적인 인간의 수면 시간 동안 총 약 100번의 실험을 수행할 수 있다. 그러면 사용자는 잠에서 깨어났을 때, 네가 잠든 사이 모두 끝내 둔 실험 결과를 확인하게 된다.
